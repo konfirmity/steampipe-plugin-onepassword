@@ -29,3 +29,5 @@ node_modules
 
 # Ignore file types
 .vscode/
+# Output of make postgres
+build
