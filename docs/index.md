@@ -82,6 +82,15 @@ connection "onepassword" {
   # The host URL set to default http://localhost:8080. Optional.
   # This can also be set via the `OP_CONNECT_HOST` environment variable.
   # url = "http://localhost:8080"
+
+  # A 1Password Events Reporting bearer token, for onepassword_signin_attempt, onepassword_audit_event
+  # and onepassword_item_usage. Optional.
+  # See https://support.1password.com/events-reporting/
+  # events_token = "<your-events-reporting-token>"
+
+  # The Events API URL for your account's region. Optional, defaults to https://events.1password.com.
+  # Use https://events.ent.1password.com, https://events.1password.ca or https://events.1password.eu for those accounts.
+  # events_url = "https://events.1password.com"
 }
 ```
 
