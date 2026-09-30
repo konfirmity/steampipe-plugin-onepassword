@@ -23,4 +23,13 @@ connection "onepassword" {
   # The Events API URL for your account's region. Optional, defaults to https://events.1password.com.
   # Use https://events.ent.1password.com, https://events.1password.ca or https://events.1password.eu for those accounts.
   # events_url = "https://events.1password.com"
+
+  # OAuth client credentials and account ID for the Users API, for onepassword_user. Optional; all three are required together.
+  # See https://developer.1password.com/docs/users-api/
+  # users_client_id     = "<your-oauth-client-id>"
+  # users_client_secret = "<your-oauth-client-secret>"
+  # users_account_id    = "<your-account-id>"
+
+  # The Users API URL. Optional, defaults to https://api.1password.com.
+  # users_api_url = "https://api.1password.com"
 }

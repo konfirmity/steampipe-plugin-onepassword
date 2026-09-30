@@ -10,6 +10,10 @@ type onepasswordConfig struct {
 	ServiceAccountToken *string `hcl:"service_account_token"`
 	EventsToken         *string `hcl:"events_token"`
 	EventsURL           *string `hcl:"events_url"`
+	UsersClientID       *string `hcl:"users_client_id"`
+	UsersClientSecret   *string `hcl:"users_client_secret"`
+	UsersAccountID      *string `hcl:"users_account_id"`
+	UsersAPIURL         *string `hcl:"users_api_url"`
 }
 
 func ConfigInstance() interface{} {
