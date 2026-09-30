@@ -14,7 +14,7 @@ import (
 func tableOnepasswordItem(ctx context.Context) *plugin.Table {
 	return &plugin.Table{
 		Name:        "onepassword_item",
-		Description: "Retrieve information about your items.",
+		Description: "Retrieve metadata about your items. Item contents such as passwords and fields are never read.",
 		List: &plugin.ListConfig{
 			ParentHydrate: listVaults,
 			Hydrate:       listItems,
@@ -24,10 +24,6 @@ func tableOnepasswordItem(ctx context.Context) *plugin.Table {
 					Require: plugin.Optional,
 				},
 			},
-		},
-		Get: &plugin.GetConfig{
-			Hydrate:    getItem,
-			KeyColumns: plugin.AllColumns([]string{"id", "vault_id"}),
 		},
 		Columns: []*plugin.Column{
 			{
@@ -40,12 +36,17 @@ func tableOnepasswordItem(ctx context.Context) *plugin.Table {
 				Name:        "vault_id",
 				Type:        proto.ColumnType_STRING,
 				Description: "The UUID of the vault the item is in.",
-				Transform:   transform.FromField("Vault.ID"),
+				Transform:   transform.FromField("VaultID"),
 			},
 			{
 				Name:        "favorite",
 				Type:        proto.ColumnType_BOOL,
-				Description: "Whether the item is marked as a favorite.",
+				Description: "Whether the item is marked as a favorite. Null with a service account.",
+			},
+			{
+				Name:        "state",
+				Type:        proto.ColumnType_STRING,
+				Description: "The state of the item: active or archived.",
 			},
 			{
 				Name:        "category",
@@ -60,7 +61,7 @@ func tableOnepasswordItem(ctx context.Context) *plugin.Table {
 			{
 				Name:        "last_edited_by",
 				Type:        proto.ColumnType_STRING,
-				Description: "UUID of the account that last changed the item.",
+				Description: "UUID of the account that last changed the item. Null with a service account.",
 			},
 			{
 				Name:        "updated_at",
@@ -70,30 +71,12 @@ func tableOnepasswordItem(ctx context.Context) *plugin.Table {
 			{
 				Name:        "version",
 				Type:        proto.ColumnType_INT,
-				Description: "The version of the item.",
+				Description: "The version of the item. Null with a service account.",
 			},
 			{
 				Name:        "trashed",
 				Type:        proto.ColumnType_BOOL,
-				Description: "Checks if the item is trashed.",
-			},
-			{
-				Name:        "fields",
-				Type:        proto.ColumnType_JSON,
-				Description: "The fields of the item.",
-				Hydrate:     getItem,
-			},
-			{
-				Name:        "files",
-				Type:        proto.ColumnType_JSON,
-				Description: "The files of the item.",
-				Hydrate:     getItem,
-			},
-			{
-				Name:        "sections",
-				Type:        proto.ColumnType_JSON,
-				Description: "The sections of the item.",
-				Hydrate:     getItem,
+				Description: "Checks if the item is trashed. Null with a service account.",
 			},
 			{
 				Name:        "tags",
@@ -149,36 +132,4 @@ func listItems(ctx context.Context, d *plugin.QueryData, h *plugin.HydrateData) 
 	}
 
 	return nil, nil
-}
-
-/// HYDRATE FUNCTION
-
-func getItem(ctx context.Context, d *plugin.QueryData, h *plugin.HydrateData) (interface{}, error) {
-	var id, vault_id string
-	if h.Item != nil {
-		id = h.Item.(onepassword.Item).ID
-		vault_id = h.Item.(onepassword.Item).Vault.ID
-	} else {
-		id = d.EqualsQualString("id")
-		vault_id = d.EqualsQualString("vault_id")
-	}
-
-	// Check if id or vault_id is empty
-	if id == "" || vault_id == "" {
-		return nil, nil
-	}
-
-	client, err := getBackend(ctx, d)
-	if err != nil {
-		plugin.Logger(ctx).Error("onepassword_item.getItem", "connection_error", err)
-		return nil, err
-	}
-
-	item, err := client.GetItem(ctx, id, vault_id)
-	if err != nil {
-		plugin.Logger(ctx).Error("onepassword_item.getItem", "api_error", err)
-		return nil, err
-	}
-
-	return item, nil
 }

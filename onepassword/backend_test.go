@@ -118,19 +118,10 @@ func (f fakeVaults) GetOverview(_ context.Context, id string) (opsdk.VaultOvervi
 
 type fakeItems struct {
 	byVault map[string][]opsdk.ItemOverview
-	full    map[string]opsdk.Item
 }
 
 func (f fakeItems) List(_ context.Context, vaultID string, _ ...opsdk.ItemListFilter) ([]opsdk.ItemOverview, error) {
 	return f.byVault[vaultID], nil
-}
-
-func (f fakeItems) Get(_ context.Context, vaultID, itemID string) (opsdk.Item, error) {
-	item, ok := f.full[vaultID+"/"+itemID]
-	if !ok {
-		return opsdk.Item{}, errors.New("item not found")
-	}
-	return item, nil
 }
 
 func TestSDKBackendMapsVaultsToConnectShape(t *testing.T) {
@@ -174,59 +165,35 @@ func TestSDKBackendMapsItemOverviewsToConnectCategories(t *testing.T) {
 	}
 	wantCategories := []onepassword.ItemCategory{onepassword.Login, onepassword.ApiCredential, onepassword.SSHKey, onepassword.Custom}
 	for i, want := range wantCategories {
-		if items[i].Category != want {
+		if items[i].Category != string(want) {
 			t.Errorf("item %s category = %q, want %q", items[i].ID, items[i].Category, want)
 		}
-		if items[i].Vault.ID != "v1" {
-			t.Errorf("item %s vault = %q, want v1", items[i].ID, items[i].Vault.ID)
+		if items[i].VaultID != "v1" {
+			t.Errorf("item %s vault = %q, want v1", items[i].ID, items[i].VaultID)
 		}
 	}
 	if len(items[0].URLs) != 1 || items[0].URLs[0].URL != "https://github.com" || items[0].Tags[0] != "prod" {
 		t.Errorf("urls/tags did not map: %+v", items[0])
 	}
-	if items[0].Fields != nil {
-		t.Errorf("an overview must not carry fields, got %+v", items[0].Fields)
-	}
 }
 
-func TestSDKBackendGetItemMarksBuiltInLoginFields(t *testing.T) {
-	section := "sec1"
-	backend := sdkBackend{items: fakeItems{full: map[string]opsdk.Item{
-		"v1/i1": {
-			ID: "i1", VaultID: "v1", Category: opsdk.ItemCategoryLogin,
-			Sections: []opsdk.ItemSection{{ID: "sec1", Title: "Extra"}},
-			Fields: []opsdk.ItemField{
-				{ID: "username", Title: "username", FieldType: opsdk.ItemFieldTypeText, Value: "alice"},
-				{ID: "password", Title: "password", FieldType: opsdk.ItemFieldTypeConcealed, Value: "pw"},
-				{ID: "password", Title: "old password", FieldType: opsdk.ItemFieldTypeConcealed, Value: "old", SectionID: &section},
-			},
-			Notes: "note",
+func TestSDKBackendReportsItemState(t *testing.T) {
+	backend := sdkBackend{items: fakeItems{byVault: map[string][]opsdk.ItemOverview{
+		"v1": {
+			{ID: "i1", VaultID: "v1", State: opsdk.ItemStateActive},
+			{ID: "i2", VaultID: "v1", State: opsdk.ItemStateArchived},
 		},
 	}}}
 
-	item, err := backend.GetItem(context.Background(), "i1", "v1")
+	items, err := backend.ListItems(context.Background(), "v1")
 	if err != nil {
-		t.Fatalf("GetItem: %v", err)
+		t.Fatalf("ListItems: %v", err)
 	}
-	if item.Fields[0].Purpose != "USERNAME" || item.Fields[1].Purpose != "PASSWORD" {
-		t.Errorf("built-in fields lost their purpose: %+v %+v", item.Fields[0], item.Fields[1])
+	if items[0].State != "active" || items[1].State != "archived" {
+		t.Errorf("states = %q, %q", items[0].State, items[1].State)
 	}
-	if item.Fields[2].Purpose != "" || item.Fields[2].Section == nil || item.Fields[2].Section.Label != "Extra" {
-		t.Errorf("a sectioned field must keep its section and no purpose: %+v", item.Fields[2])
-	}
-	if item.Fields[1].Type != "CONCEALED" {
-		t.Errorf("field type = %q, want CONCEALED", item.Fields[1].Type)
-	}
-	notes := item.Fields[3]
-	if notes.ID != "notesPlain" || notes.Purpose != "NOTES" || notes.Value != "note" {
-		t.Errorf("notes did not map to the Connect notesPlain field: %+v", notes)
-	}
-}
-
-func TestSDKBackendRefusesFileOperations(t *testing.T) {
-	_, err := sdkBackend{}.ListFiles(context.Background(), "i1", "v1")
-	if !errors.Is(err, errFilesNeedConnect) {
-		t.Fatalf("got %v, want errFilesNeedConnect", err)
+	if items[0].Favorite != nil || items[0].Version != nil || items[0].Trashed != nil || items[0].LastEditedBy != nil {
+		t.Errorf("Connect-only fields must stay nil for service-account rows: %+v", items[0])
 	}
 }
 
@@ -253,7 +220,7 @@ func TestConnectBackendCallsConnectServer(t *testing.T) {
 		t.Fatalf("ListVaults = %+v, %v", vaults, err)
 	}
 	items, err := backend.ListItems(context.Background(), vaultID)
-	if err != nil || len(items) != 1 || items[0].Category != onepassword.Login {
+	if err != nil || len(items) != 1 || items[0].Category != string(onepassword.Login) || items[0].State != itemStateActive || items[0].Version == nil {
 		t.Fatalf("ListItems = %+v, %v", items, err)
 	}
 	for _, a := range auth {

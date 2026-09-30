@@ -60,7 +60,7 @@ steampipe plugin install onepassword
 | Item        | Description |
 | ----------- | ----------- |
 | Credentials | Either a [service account token](https://developer.1password.com/docs/service-accounts/get-started/) (`ops_...`), or a [Connect server](https://developer.1password.com/docs/connect/manage-secrets-automation#issue-revoke-or-rename-an-access-token) access token and URL. |
-| Permissions | Both credentials see only the vaults they have been granted access to. `onepassword_item_file` needs a Connect server. |
+| Permissions | Both credentials see only the vaults they have been granted access to. |
 | Radius      | Each connection represents a single 1Password account (service account) or Connect server. |
 | Resolution  | 1. Credentials explicitly set in a steampipe config file (`~/.steampipe/config/onepassword.spc`), where `service_account_token` takes precedence over `token`.<br />2. Credentials specified in environment variables, where `OP_SERVICE_ACCOUNT_TOKEN` takes precedence over `OP_CONNECT_TOKEN` and `OP_CONNECT_HOST`. |
 

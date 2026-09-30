@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
-	"strings"
 	"sync"
+	"time"
 
 	"github.com/1Password/connect-sdk-go/connect"
 	"github.com/1Password/connect-sdk-go/onepassword"
@@ -18,18 +18,30 @@ import (
 type vaultBackend interface {
 	ListVaults(ctx context.Context) ([]onepassword.Vault, error)
 	GetVault(ctx context.Context, id string) (*onepassword.Vault, error)
-	ListItems(ctx context.Context, vaultID string) ([]onepassword.Item, error)
-	GetItem(ctx context.Context, itemID, vaultID string) (*onepassword.Item, error)
-	ListFiles(ctx context.Context, itemID, vaultID string) ([]onepassword.File, error)
-	GetFile(ctx context.Context, fileID, itemID, vaultID string) (*onepassword.File, error)
-	GetFileContent(ctx context.Context, file *onepassword.File) ([]byte, error)
+	ListItems(ctx context.Context, vaultID string) ([]itemOverview, error)
+}
+
+// itemOverview is the metadata of an item. The favorite, version, trashed and last_edited_by
+// fields come only from Connect, so they are pointers that stay nil for service-account rows.
+type itemOverview struct {
+	ID           string
+	VaultID      string
+	Title        string
+	Category     string
+	State        string
+	Tags         []string
+	URLs         []onepassword.ItemURL
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+	Favorite     *bool
+	Version      *int
+	Trashed      *bool
+	LastEditedBy *string
 }
 
 const defaultConnectURL = "http://localhost:8080"
 
 var errMissingCredentials = errors.New("either 'service_account_token' or 'token' must be set in the connection configuration. Edit your connection configuration file and then restart Steampipe.")
-
-var errFilesNeedConnect = errors.New("onepassword_item_file is only supported with a Connect server ('token' and 'url'), not a service account")
 
 type authMode int
 
@@ -76,6 +88,8 @@ func nonEmpty(s *string) bool {
 
 var sdkClientMu sync.Mutex
 
+const itemStateActive = "active"
+
 const sdkBackendCacheKey = "onepassword_sdk_backend"
 
 func getBackend(ctx context.Context, d *plugin.QueryData) (vaultBackend, error) {
@@ -119,24 +133,34 @@ func (b connectBackend) GetVault(_ context.Context, id string) (*onepassword.Vau
 	return b.client.GetVault(id)
 }
 
-func (b connectBackend) ListItems(_ context.Context, vaultID string) ([]onepassword.Item, error) {
-	return b.client.GetItems(vaultID)
+func (b connectBackend) ListItems(_ context.Context, vaultID string) ([]itemOverview, error) {
+	items, err := b.client.GetItems(vaultID)
+	if err != nil {
+		return nil, err
+	}
+	overviews := make([]itemOverview, 0, len(items))
+	for _, i := range items {
+		overviews = append(overviews, itemFromConnect(i))
+	}
+	return overviews, nil
 }
 
-func (b connectBackend) GetItem(_ context.Context, itemID, vaultID string) (*onepassword.Item, error) {
-	return b.client.GetItem(itemID, vaultID)
-}
-
-func (b connectBackend) ListFiles(_ context.Context, itemID, vaultID string) ([]onepassword.File, error) {
-	return b.client.GetFiles(itemID, vaultID)
-}
-
-func (b connectBackend) GetFile(_ context.Context, fileID, itemID, vaultID string) (*onepassword.File, error) {
-	return b.client.GetFile(fileID, itemID, vaultID)
-}
-
-func (b connectBackend) GetFileContent(_ context.Context, file *onepassword.File) ([]byte, error) {
-	return b.client.GetFileContent(file)
+func itemFromConnect(i onepassword.Item) itemOverview {
+	return itemOverview{
+		ID:           i.ID,
+		VaultID:      i.Vault.ID,
+		Title:        i.Title,
+		Category:     string(i.Category),
+		State:        itemStateActive,
+		Tags:         i.Tags,
+		URLs:         i.URLs,
+		CreatedAt:    i.CreatedAt,
+		UpdatedAt:    i.UpdatedAt,
+		Favorite:     &i.Favorite,
+		Version:      &i.Version,
+		Trashed:      &i.Trashed,
+		LastEditedBy: &i.LastEditedBy,
+	}
 }
 
 type sdkVaultsAPI interface {
@@ -146,7 +170,6 @@ type sdkVaultsAPI interface {
 
 type sdkItemsAPI interface {
 	List(ctx context.Context, vaultID string, filters ...opsdk.ItemListFilter) ([]opsdk.ItemOverview, error)
-	Get(ctx context.Context, vaultID string, itemID string) (opsdk.Item, error)
 }
 
 type sdkBackend struct {
@@ -175,37 +198,16 @@ func (b sdkBackend) GetVault(ctx context.Context, id string) (*onepassword.Vault
 	return &vault, nil
 }
 
-func (b sdkBackend) ListItems(ctx context.Context, vaultID string) ([]onepassword.Item, error) {
+func (b sdkBackend) ListItems(ctx context.Context, vaultID string) ([]itemOverview, error) {
 	overviews, err := b.items.List(ctx, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]onepassword.Item, 0, len(overviews))
+	items := make([]itemOverview, 0, len(overviews))
 	for _, o := range overviews {
 		items = append(items, itemFromSDKOverview(o))
 	}
 	return items, nil
-}
-
-func (b sdkBackend) GetItem(ctx context.Context, itemID, vaultID string) (*onepassword.Item, error) {
-	item, err := b.items.Get(ctx, vaultID, itemID)
-	if err != nil {
-		return nil, err
-	}
-	converted := itemFromSDK(item)
-	return &converted, nil
-}
-
-func (b sdkBackend) ListFiles(context.Context, string, string) ([]onepassword.File, error) {
-	return nil, errFilesNeedConnect
-}
-
-func (b sdkBackend) GetFile(context.Context, string, string, string) (*onepassword.File, error) {
-	return nil, errFilesNeedConnect
-}
-
-func (b sdkBackend) GetFileContent(context.Context, *onepassword.File) ([]byte, error) {
-	return nil, errFilesNeedConnect
 }
 
 var sdkVaultTypes = map[opsdk.VaultType]onepassword.VaultType{
@@ -279,84 +281,16 @@ func urlsFromSDK(websites []opsdk.Website) []onepassword.ItemURL {
 	return urls
 }
 
-func itemFromSDKOverview(o opsdk.ItemOverview) onepassword.Item {
-	return onepassword.Item{
+func itemFromSDKOverview(o opsdk.ItemOverview) itemOverview {
+	return itemOverview{
 		ID:        o.ID,
+		VaultID:   o.VaultID,
 		Title:     o.Title,
-		Vault:     onepassword.ItemVault{ID: o.VaultID},
-		Category:  categoryFromSDK(o.Category),
+		Category:  string(categoryFromSDK(o.Category)),
+		State:     string(o.State),
 		Tags:      o.Tags,
 		URLs:      urlsFromSDK(o.Websites),
 		CreatedAt: o.CreatedAt,
 		UpdatedAt: o.UpdatedAt,
 	}
-}
-
-var sdkFieldTypes = map[opsdk.ItemFieldType]string{
-	opsdk.ItemFieldTypeText:             "STRING",
-	opsdk.ItemFieldTypeConcealed:        "CONCEALED",
-	opsdk.ItemFieldTypeEmail:            "EMAIL",
-	opsdk.ItemFieldTypeURL:              "URL",
-	opsdk.ItemFieldTypeTOTP:             "OTP",
-	opsdk.ItemFieldTypeDate:             "DATE",
-	opsdk.ItemFieldTypeMonthYear:        "MONTH_YEAR",
-	opsdk.ItemFieldTypeMenu:             "MENU",
-	opsdk.ItemFieldTypePhone:            "PHONE",
-	opsdk.ItemFieldTypeAddress:          "ADDRESS",
-	opsdk.ItemFieldTypeCreditCardType:   "CREDIT_CARD_TYPE",
-	opsdk.ItemFieldTypeCreditCardNumber: "CREDIT_CARD_NUMBER",
-	opsdk.ItemFieldTypeReference:        "REFERENCE",
-	opsdk.ItemFieldTypeSSHKey:           "SSHKEY",
-}
-
-func itemFromSDK(i opsdk.Item) onepassword.Item {
-	item := onepassword.Item{
-		ID:        i.ID,
-		Title:     i.Title,
-		Vault:     onepassword.ItemVault{ID: i.VaultID},
-		Category:  categoryFromSDK(i.Category),
-		Tags:      i.Tags,
-		URLs:      urlsFromSDK(i.Websites),
-		Version:   int(i.Version),
-		CreatedAt: i.CreatedAt,
-		UpdatedAt: i.UpdatedAt,
-	}
-
-	sections := map[string]*onepassword.ItemSection{}
-	for _, s := range i.Sections {
-		section := &onepassword.ItemSection{ID: s.ID, Label: s.Title}
-		sections[s.ID] = section
-		item.Sections = append(item.Sections, section)
-	}
-
-	for _, f := range i.Fields {
-		fieldType, ok := sdkFieldTypes[f.FieldType]
-		if !ok {
-			fieldType = "UNKNOWN"
-		}
-		field := &onepassword.ItemField{ID: f.ID, Label: f.Title, Value: f.Value, Type: fieldType}
-		if f.SectionID != nil {
-			field.Section = sections[*f.SectionID]
-		}
-		// The SDK has no field purpose; Connect marks the built-in login fields with one, and the
-		// category tables read username and password by it.
-		if f.SectionID == nil && strings.EqualFold(f.ID, "username") {
-			field.Purpose = "USERNAME"
-		} else if f.SectionID == nil && strings.EqualFold(f.ID, "password") {
-			field.Purpose = "PASSWORD"
-		}
-		item.Fields = append(item.Fields, field)
-	}
-
-	if i.Notes != "" {
-		item.Fields = append(item.Fields, &onepassword.ItemField{ID: "notesPlain", Label: "notesPlain", Purpose: "NOTES", Type: "STRING", Value: i.Notes})
-	}
-
-	for _, f := range i.Files {
-		item.Files = append(item.Files, &onepassword.File{ID: f.Attributes.ID, Name: f.Attributes.Name, Size: int(f.Attributes.Size), Section: sections[f.SectionID]})
-	}
-	if i.Document != nil {
-		item.Files = append(item.Files, &onepassword.File{ID: i.Document.ID, Name: i.Document.Name, Size: int(i.Document.Size)})
-	}
-	return item
 }

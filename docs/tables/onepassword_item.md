@@ -11,6 +11,10 @@ description: "Allows users to query 1Password Items, specifically retrieving det
 
 The `onepassword_item` table provides insights into 1Password Items within 1Password. As a security analyst, explore item-specific details through this table, including categories, vault IDs, and associated metadata. Utilize it to uncover information about items, such as their categories, the vaults they belong to, and the intricacies of their details.
 
+**Important Notes**
+- This build reads item metadata only. Passwords, fields, sections, files and other item contents are never requested, and there are no per-category item tables; use `category` instead.
+- `favorite`, `version`, `trashed` and `last_edited_by` are only populated when connecting to a Connect server; they are null with a service account.
+
 ## Examples
 
 ### Basic info
@@ -95,27 +99,33 @@ where
 Error: The corresponding SQLite query is unavailable.
 ```
 
-### List the fields of all items with a specific section
-Analyze the fields of items within a specific section, such as 'Metadata', to gain insights into categorized data.
+### Count items by category and state
+Summarise what kinds of items exist, and how many are archived.
 
 ```sql+postgres
 select
-  title,
-  jsonb_pretty(f) as field
+  category,
+  state,
+  count(*) as items
 from
-  onepassword_item,
-  jsonb_array_elements(fields) as f
-where
-  f -> 'section' ->> 'label' = 'Metadata';
+  onepassword_item
+group by
+  category,
+  state
+order by
+  items desc;
 ```
 
 ```sql+sqlite
 select
-  title,
-  f.value as field
+  category,
+  state,
+  count(*) as items
 from
-  onepassword_item,
-  json_each(fields) as f
-where
-  json_extract(json_extract(f.value, '$.section'), '$.label') = 'Metadata';
+  onepassword_item
+group by
+  category,
+  state
+order by
+  items desc;
 ```
