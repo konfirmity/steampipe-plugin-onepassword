@@ -23,7 +23,7 @@ const (
 	usersTokenPath = "/v1beta1/users/oauth2/token"
 )
 
-var errMissingUsersConfig = errors.New("users_client_id, users_client_secret and users_account_id must be set in the connection configuration to query onepassword_user. Edit your connection configuration file and then restart Steampipe.")
+var errMissingUsersConfig = errors.New("users_client_id, users_client_secret and users_account_id must be set in the connection configuration to query onepassword_user. Edit your connection configuration file and then restart Steampipe")
 
 // usersTokenCache shares access tokens across queries so each one does not spend a token request
 // against the Users API's 100 requests/min limit.
@@ -98,7 +98,7 @@ func (c *usersClient) accessToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return "", newAPIError("Users", resp)
 	}
@@ -153,7 +153,7 @@ func (c *usersClient) listPage(ctx context.Context, pageToken string) (*usersPag
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, newAPIError("Users", resp)
 	}

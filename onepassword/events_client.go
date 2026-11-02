@@ -22,7 +22,7 @@ const (
 	itemUsagesPath     = "/api/v2/itemusages"
 )
 
-var errMissingEventsToken = errors.New("'events_token' must be set in the connection configuration to query 1Password Events tables. Edit your connection configuration file and then restart Steampipe.")
+var errMissingEventsToken = errors.New("'events_token' must be set in the connection configuration to query 1Password Events tables. Edit your connection configuration file and then restart Steampipe")
 
 type eventsClient struct {
 	apiTransport
@@ -116,7 +116,7 @@ func (c *eventsClient) post(ctx context.Context, path string, body map[string]an
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, newAPIError("Events", resp)
 	}
