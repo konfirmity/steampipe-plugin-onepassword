@@ -114,7 +114,7 @@ func getBackend(ctx context.Context, d *plugin.QueryData) (vaultBackend, error) 
 	if err != nil {
 		return nil, err
 	}
-	backend := sdkBackend{vaults: client.Vaults(), items: client.Items()}
+	backend := newSDKBackend(client)
 	if err := d.ConnectionCache.Set(ctx, sdkBackendCacheKey, backend); err != nil {
 		plugin.Logger(ctx).Warn("onepassword.getBackend", "cache_error", err)
 	}
@@ -173,8 +173,15 @@ type sdkItemsAPI interface {
 }
 
 type sdkBackend struct {
+	// client keeps the SDK client reachable: its finalizer releases the core client the handles use.
+	client *opsdk.Client
 	vaults sdkVaultsAPI
 	items  sdkItemsAPI
+}
+
+// newSDKBackend wraps the SDK client's vault and item handles together with the client itself.
+func newSDKBackend(client *opsdk.Client) sdkBackend {
+	return sdkBackend{client: client, vaults: client.Vaults(), items: client.Items()}
 }
 
 func (b sdkBackend) ListVaults(ctx context.Context) ([]onepassword.Vault, error) {
