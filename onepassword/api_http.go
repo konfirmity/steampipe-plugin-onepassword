@@ -47,7 +47,7 @@ func (t apiTransport) do(ctx context.Context, newRequest func() (*http.Request, 
 		}
 		wait := retryAfter(resp.Header.Get("Retry-After"), t.now(), attempt)
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err := t.sleep(ctx, wait); err != nil {
 			return nil, err
 		}

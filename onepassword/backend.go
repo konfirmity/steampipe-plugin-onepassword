@@ -41,7 +41,7 @@ type itemOverview struct {
 
 const defaultConnectURL = "http://localhost:8080"
 
-var errMissingCredentials = errors.New("either 'service_account_token' or 'token' must be set in the connection configuration. Edit your connection configuration file and then restart Steampipe.")
+var errMissingCredentials = errors.New("either 'service_account_token' or 'token' must be set in the connection configuration. Edit your connection configuration file and then restart Steampipe")
 
 type authMode int
 
@@ -158,7 +158,7 @@ func itemFromConnect(i onepassword.Item) itemOverview {
 		UpdatedAt:    i.UpdatedAt,
 		Favorite:     &i.Favorite,
 		Version:      &i.Version,
-		Trashed:      &i.Trashed,
+		Trashed:      &i.Trashed, //nolint:staticcheck // Connect still returns it; it fills the trashed column
 		LastEditedBy: &i.LastEditedBy,
 	}
 }
